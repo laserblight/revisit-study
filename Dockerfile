@@ -2,7 +2,10 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package.json yarn.lock ./
-RUN yarn install --frozen-lockfile
+RUN sed -i 's#https://registry.yarnpkg.com/#https://registry.npmjs.org/#g' yarn.lock \
+	&& yarn config set network-timeout 600000 -g \
+	&& yarn config set registry https://registry.npmjs.org -g \
+	&& (yarn install --frozen-lockfile --network-timeout 600000 || yarn install --frozen-lockfile --network-timeout 600000)
 COPY . .
 ARG VITE_BASE_PATH=/
 ARG VITE_SUPABASE_URL=__UNSET__

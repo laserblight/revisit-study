@@ -11,6 +11,10 @@ This guide covers:
 - DNS control for your domain (for production)
 - This repository checked out on your machine/server
 
+Command copy note:
+- Paste commands as plain text in your shell.
+- Do not include rendered markdown/link text like `[docker-compose.prod.yml](...)` in terminal commands.
+
 ---
 
 ## 2) Local testing
@@ -231,6 +235,22 @@ docker compose -f supabase/docker-compose.yml --env-file supabase/.env down
 
 ## 6) Troubleshooting
 
+- Error: `network revisit_net declared as external, but could not be found`
+  - Create the shared network explicitly, then retry compose:
+
+```bash
+docker network inspect revisit_net >/dev/null 2>&1 || docker network create --driver bridge revisit_net
+docker network ls | grep revisit_net
+docker compose -f supabase/docker-compose.yml --env-file supabase/.env up -d
+```
+
+  - If it still fails, ensure you are using the same Docker daemon/context for both commands:
+
+```bash
+docker context show
+docker info --format '{{.Name}}'
+```
+
 - `api.localhost` not resolving locally:
   - Add `127.0.0.1 api.localhost` to hosts file.
 - API returns `401 No API key found in request`:
@@ -242,4 +262,28 @@ docker compose -f supabase/docker-compose.yml --env-file supabase/.env down
 
 ```bash
 docker logs --tail 200 <container-name>
+```
+
+- App image build fails with `ESOCKETTIMEDOUT` / `There appears to be trouble with your network connection`:
+  - This is usually transient network/registry timeout on the server.
+  - First verify your Droplet has the latest Dockerfile updates:
+
+```bash
+grep -n "registry.npmjs.org" Dockerfile
+grep -n "network-timeout 600000" Dockerfile
+```
+
+  - If those commands return no lines, update your server copy of the repo before rebuilding.
+  - Retry build once (often succeeds on second run):
+
+```bash
+VITE_SUPABASE_ANON_KEY="$(grep '^ANON_KEY=' supabase/.env | cut -d= -f2-)" docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod build --no-cache study
+VITE_SUPABASE_ANON_KEY="$(grep '^ANON_KEY=' supabase/.env | cut -d= -f2-)" docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod up -d
+```
+
+  - Confirm outbound connectivity from the Droplet:
+
+```bash
+curl -I https://registry.npmjs.org
+curl -I https://registry.yarnpkg.com
 ```
