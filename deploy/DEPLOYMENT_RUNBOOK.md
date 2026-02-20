@@ -257,6 +257,19 @@ docker info --format '{{.Name}}'
   - Routing is working; add `apikey` and `Authorization` headers for authenticated checks.
 - Caddy certificate delay on new domain:
   - Verify DNS A records have propagated and ports `80/443` are reachable publicly.
+- Study route returns `403 Forbidden` from nginx for paths like `/demo-screen-recording/`:
+  - Rebuild and restart the `study` app container so the latest nginx fallback config is included:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod build study
+docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod up -d
+```
+
+  - Then retest:
+
+```bash
+curl -I https://study.<your-domain>/demo-screen-recording/
+```
 - A Supabase service is unhealthy:
   - Inspect logs for that container:
 
@@ -286,4 +299,33 @@ VITE_SUPABASE_ANON_KEY="$(grep '^ANON_KEY=' supabase/.env | cut -d= -f2-)" docke
 ```bash
 curl -I https://registry.npmjs.org
 curl -I https://registry.yarnpkg.com
+```
+
+- App image build appears to hang at `tsc && vite build` (`[build 6/6]`):
+  - This is often the slowest step and can take `10-30` minutes on small VMs.
+  - Check whether it is still making progress:
+
+```bash
+docker stats --no-stream
+free -h
+```
+
+  - Hard threshold for action:
+    - If RAM free is under ~`100Mi` **and** swap is nearly/full (`Swap free ~0`), the build is usually thrashing.
+    - In that state, stop the build and temporarily resize to `4GB` (or add more swap), then rebuild.
+
+  - If memory is tight, add swap (recommended on 2 GB Droplets):
+
+```bash
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+  - Then rerun build without `--no-cache` for faster retries:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod build study
 ```
