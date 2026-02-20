@@ -14,85 +14,89 @@ If you are using reVISit for a paper, please cite:
 
 GitHub citation metadata for this repository is available in [CITATION.cff](./CITATION.cff).
 
-## Build Instructions
+## Local development (native)
 
-To run this demo experiment locally, you will need to install Node.js on your computer.
+1. Install Node + Yarn.
+2. Install dependencies:
 
-* Clone `https://github.com/revisit-studies/study`
-* Run `yarn install`. If you don't have Yarn installed, run `npm i -g yarn`.
-* To run locally, run `yarn serve`.
-* Go to [http://localhost:8080](http://localhost:8080) to view it in your browser. The page will reload when you make changes.
+	`yarn install`
 
-## Adding Tests
+3. Run the frontend dev server:
 
-This repo uses two test types:
+	`yarn serve`
 
-* **Unit tests** with **Vitest** for parser, utility, and component logic.
-* **End-to-end (E2E) tests** with **Playwright** for participant/designer flows in a running app.
+4. Open [http://localhost:8080](http://localhost:8080).
 
-### Unit tests (Vitest)
+### Optional: local Supabase for native dev
 
-* Co-locate unit tests with the source file they cover.
-* Use the same base filename and add `.spec.` (for example: `src/parser/parser.ts` -> `src/parser/parser.spec.ts`).
-* Use `vitest` APIs (`describe`, `test`/`it`, `expect`).
-* Run unit tests with:
+1. Start Supabase services (with local ports):
 
-```bash
-yarn unittest
-```
+	`docker network inspect revisit_net >/dev/null 2>&1 || docker network create revisit_net`
 
-### E2E tests (Playwright)
+	`docker compose -f supabase/docker-compose.yml -f supabase/docker-compose.local.yml --env-file supabase/.env up -d`
 
-* Put E2E tests in the root `tests/` directory.
-* Name files with `.spec.ts` (for example: `tests/demo-vlat.spec.ts`).
-* Keep tests focused on user-observable behavior (navigation, input, progression, reviewer/designer behavior).
-* Run E2E tests with:
+2. Point your local Vite app to Kong by setting:
 
-```bash
-yarn test
-```
+	`VITE_STORAGE_ENGINE="supabase"`
 
-## Release Instructions
+	`VITE_SUPABASE_URL="http://localhost:8000"`
 
-Releasing reVISit.dev happens automatically when a PR is merged into the `main` branch. The name of the pull request should be the title of the release, e.g. `v1.0.0`. Releasing creates a tag with the same name as the PR, but the official GitHub release should be created manually. The `main` branch is protected and requires two reviews before merging.
+	`VITE_SUPABASE_ANON_KEY="<same value as ANON_KEY in supabase/.env>"`
 
-The workflow for release looks as follows:
-Develop features on feature branch
-| PRs
-Dev branch
-| PR (1 per release)
-Main branch
-| Run release workflow on merge
-References are updated and commit is tagged
+## Full local Docker workflow
 
-### Release Follow-Up
+This runs app + reverse proxy + Supabase in containers.
 
-- [ ] Verify docs links in the [Study Repository](https://github.com/revisit-studies/study) are up to date and point to the current reVISit documentation pages.
-- [ ] After the release is complete, run the template update process so downstream study templates include the latest release changes.
+1. Create shared network once:
 
+	`docker network inspect revisit_net >/dev/null 2>&1 || docker network create revisit_net`
 
-## QC Checklist
+2. Start Supabase stack:
 
-### [Study Repository](https://github.com/revisit-studies/study)
+	`docker compose -f supabase/docker-compose.yml --env-file supabase/.env up -d`
 
-**Studies**
-- [ ] Review all studies for any crashes/bugs
-- [ ] Check provenance data (audio, screen, etc.)
+3. Start app + Caddy proxy:
 
-**File Download**
-- [ ] JSON export
-- [ ] Tidy download export
-- [ ] Download audio recordings
-- [ ] Download screen recordings
-- [ ] Download configs
+	`VITE_SUPABASE_ANON_KEY="<ANON_KEY from supabase/.env>" docker compose -f docker-compose.local.yml --env-file deploy/.env.local.example up -d --build`
 
-**Docs**
-- [ ] Update comments in `store/types.ts`, `parser/types.ts`, `storage/types.ts`, `storage/engines/types.ts`
-- [ ] Update `typedocReadMe.md`
+4. Open:
+	- App: [http://localhost:8080](http://localhost:8080)
+	- API base: `http://api.localhost:8080`
 
-### [Documentation Repository](https://github.com/revisit-studies/reVISit-studies.github.io)
-- [ ] Review docs
-- [ ] Review [library list](https://revisit.dev/docs/designing-studies/plugin-libraries/)
-- [ ] Check for typos / outdated docs
-- [ ] Validate example code
-- [ ] Update screenshots
+If `api.localhost` does not resolve on your machine, add `127.0.0.1 api.localhost` to your hosts file.
+
+## Production Docker deployment (DigitalOcean/VM)
+
+This setup uses two public domains:
+- Study UI: `study.<your-domain>`
+- Supabase API gateway: `api.<your-domain>`
+
+1. Copy and edit env templates:
+	- `cp deploy/.env.prod.example deploy/.env.prod`
+	- Update `deploy/.env.prod` with real domains.
+	- Update `supabase/.env` with strong secrets and production URLs.
+
+2. Ensure these Supabase values match your domains:
+	- `SITE_URL=https://<study-domain>`
+	- `API_EXTERNAL_URL=https://<api-domain>`
+	- `SUPABASE_PUBLIC_URL=https://<api-domain>`
+
+3. Create shared network:
+
+	`docker network inspect revisit_net >/dev/null 2>&1 || docker network create revisit_net`
+
+4. Start Supabase services:
+
+	`docker compose -f supabase/docker-compose.yml --env-file supabase/.env up -d`
+
+5. Build/start app + reverse proxy:
+
+	`VITE_SUPABASE_ANON_KEY="<ANON_KEY from supabase/.env>" docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod up -d --build`
+
+6. Open firewall only for `80/443` publicly. Keep admin/internal ports private.
+
+## Notes
+
+- The app image now serves SPA routes correctly via nginx fallback to `index.html`.
+- Production Docker build forces `VITE_BASE_PATH=/`.
+- Configure your root app `.env` / build args for `VITE_STORAGE_ENGINE`, `VITE_SUPABASE_URL`, and `VITE_SUPABASE_ANON_KEY` to match your deployment.

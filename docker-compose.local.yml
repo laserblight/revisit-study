@@ -1,0 +1,35 @@
+services:
+  study:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_BASE_PATH: "/"
+        VITE_SUPABASE_URL: "http://api.localhost:8080"
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-__UNSET__}
+    restart: unless-stopped
+    networks:
+      - revisit_net
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./deploy/Caddyfile.local:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      API_DOMAIN: api.localhost
+      STUDY_DOMAIN: localhost
+    networks:
+      - revisit_net
+
+networks:
+  revisit_net:
+    external: true
+
+volumes:
+  caddy_data:
+  caddy_config:

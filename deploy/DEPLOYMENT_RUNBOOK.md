@@ -1,0 +1,245 @@
+# ReVISit Docker Deployment Runbook
+
+This guide covers:
+- Local testing (native + full Docker)
+- Production-style deployment on a DigitalOcean Droplet
+- Smoke tests and troubleshooting
+
+## 1) Prerequisites
+
+- Docker + Docker Compose plugin installed (`docker compose` command works)
+- DNS control for your domain (for production)
+- This repository checked out on your machine/server
+
+---
+
+## 2) Local testing
+
+### Option A: Native frontend + Docker Supabase
+
+Use this for faster frontend iteration.
+
+1. Create shared Docker network (once):
+
+```bash
+docker network inspect revisit_net >/dev/null 2>&1 || docker network create revisit_net
+```
+
+2. Start Supabase with local-exposed ports:
+
+```bash
+docker compose -f supabase/docker-compose.yml -f supabase/docker-compose.local.yml --env-file supabase/.env up -d
+```
+
+3. In root `.env`, set:
+
+```dotenv
+VITE_STORAGE_ENGINE="supabase"
+VITE_SUPABASE_URL="http://localhost:8000"
+VITE_SUPABASE_ANON_KEY="<ANON_KEY from supabase/.env>"
+```
+
+4. Start frontend:
+
+```bash
+yarn install
+yarn serve
+```
+
+5. Open:
+- App: http://localhost:8080
+
+### Option B: Full local Docker (app + proxy + supabase)
+
+Use this for production parity.
+
+1. Create shared network (once):
+
+```bash
+docker network inspect revisit_net >/dev/null 2>&1 || docker network create revisit_net
+```
+
+2. Start Supabase stack:
+
+```bash
+docker compose -f supabase/docker-compose.yml --env-file supabase/.env up -d
+```
+
+3. Start app + local Caddy proxy:
+
+```bash
+VITE_SUPABASE_ANON_KEY="$(grep '^ANON_KEY=' supabase/.env | cut -d= -f2-)" docker compose -f docker-compose.local.yml --env-file deploy/.env.local.example up -d --build
+```
+
+4. Open:
+- App: http://localhost:8080
+- API host (through proxy): http://api.localhost:8080
+
+If `api.localhost` does not resolve, add this to hosts file:
+
+```text
+127.0.0.1 api.localhost
+```
+
+---
+
+## 3) Local smoke tests
+
+### Basic route checks
+
+```bash
+curl -i http://localhost:8080/
+curl -i --resolve api.localhost:8080:127.0.0.1 http://api.localhost:8080/auth/v1/health
+curl -i --resolve api.localhost:8080:127.0.0.1 http://api.localhost:8080/rest/v1/
+```
+
+Expected results:
+- App route: `200`
+- API routes without key: `401` with message `No API key found in request` (this is expected and confirms routing)
+
+### Authenticated API check (optional)
+
+```bash
+ANON_KEY="$(grep '^ANON_KEY=' supabase/.env | cut -d= -f2-)"
+curl -i --resolve api.localhost:8080:127.0.0.1 \
+  -H "apikey: ${ANON_KEY}" \
+  -H "Authorization: Bearer ${ANON_KEY}" \
+  http://api.localhost:8080/auth/v1/settings
+```
+
+---
+
+## 4) Deploy to DigitalOcean (Droplet)
+
+## 4.1 Create and prepare server
+
+1. Create Ubuntu LTS Droplet.
+2. Point DNS records:
+   - `study.<your-domain>` -> Droplet public IP
+   - `api.<your-domain>` -> Droplet public IP
+3. SSH to server:
+
+```bash
+ssh <user>@<server-ip>
+```
+
+4. Install Docker + Compose plugin.
+
+## 4.2 Clone repo and configure env
+
+```bash
+git clone <your-repo-url>
+cd supabasetest
+```
+
+1. Configure app/proxy domains:
+
+```bash
+cp deploy/.env.prod.example deploy/.env.prod
+```
+
+Edit `deploy/.env.prod`:
+
+```dotenv
+STUDY_DOMAIN=study.<your-domain>
+API_DOMAIN=api.<your-domain>
+```
+
+2. Edit `supabase/.env` for production:
+- Rotate all defaults/secrets (`POSTGRES_PASSWORD`, `JWT_SECRET`, keys, dashboard password).
+- Set:
+
+```dotenv
+SITE_URL=https://study.<your-domain>
+API_EXTERNAL_URL=https://api.<your-domain>
+SUPABASE_PUBLIC_URL=https://api.<your-domain>
+```
+
+## 4.3 Start services
+
+1. Create shared network:
+
+```bash
+docker network inspect revisit_net >/dev/null 2>&1 || docker network create revisit_net
+```
+
+2. Start Supabase:
+
+```bash
+docker compose -f supabase/docker-compose.yml --env-file supabase/.env up -d
+```
+
+3. Start app + Caddy reverse proxy:
+
+```bash
+VITE_SUPABASE_ANON_KEY="$(grep '^ANON_KEY=' supabase/.env | cut -d= -f2-)" docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod up -d --build
+```
+
+## 4.4 Configure firewall
+
+Allow inbound:
+- `22` (SSH) from your admin IP(s)
+- `80`, `443` from internet
+
+Keep internal/admin ports private.
+
+## 4.5 Production smoke tests
+
+From your laptop:
+
+```bash
+curl -I https://study.<your-domain>/
+curl -i https://api.<your-domain>/auth/v1/health
+curl -i https://api.<your-domain>/rest/v1/
+```
+
+Expected:
+- Study: `200` (or `301/308` then `200`)
+- API without key: `401` (expected)
+
+---
+
+## 5) Operational commands
+
+### View status
+
+```bash
+docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+```
+
+### Tail logs
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod logs -f caddy study
+docker compose -f supabase/docker-compose.yml --env-file supabase/.env logs -f kong auth rest storage db
+```
+
+### Restart app/proxy only
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod up -d --build
+```
+
+### Stop local stacks
+
+```bash
+docker compose -f docker-compose.local.yml --env-file deploy/.env.local.example down
+docker compose -f supabase/docker-compose.yml --env-file supabase/.env down
+```
+
+---
+
+## 6) Troubleshooting
+
+- `api.localhost` not resolving locally:
+  - Add `127.0.0.1 api.localhost` to hosts file.
+- API returns `401 No API key found in request`:
+  - Routing is working; add `apikey` and `Authorization` headers for authenticated checks.
+- Caddy certificate delay on new domain:
+  - Verify DNS A records have propagated and ports `80/443` are reachable publicly.
+- A Supabase service is unhealthy:
+  - Inspect logs for that container:
+
+```bash
+docker logs --tail 200 <container-name>
+```

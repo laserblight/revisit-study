@@ -1,0 +1,7 @@
+{$API_DOMAIN:api.localhost} {
+  reverse_proxy kong:8000
+}
+
+{$STUDY_DOMAIN:localhost} {
+  reverse_proxy study:80
+}

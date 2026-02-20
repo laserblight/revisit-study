@@ -1,0 +1,40 @@
+services:
+
+  # --- Study UI ---
+  study:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_BASE_PATH: "/"
+        VITE_SUPABASE_URL: "https://${API_DOMAIN:-api.example.com}"
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-__UNSET__}
+    restart: unless-stopped
+    networks:
+      - revisit_net
+
+  # --- Caddy reverse proxy ---
+  caddy:
+    image: caddy:2
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      API_DOMAIN: ${API_DOMAIN:-api.example.com}
+      STUDY_DOMAIN: ${STUDY_DOMAIN:-study.example.com}
+    networks:
+      - revisit_net
+
+networks:
+  revisit_net:
+    external: true
+
+volumes:
+  caddy_data:
+  caddy_config:

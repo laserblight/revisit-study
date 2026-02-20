@@ -1,0 +1,8 @@
+services:
+  kong:
+    ports:
+      - "8000:8000"
+
+  studio:
+    ports:
+      - "8001:3000"

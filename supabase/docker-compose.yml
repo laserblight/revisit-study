@@ -1,7 +1,6 @@
 name: supabase
 
 services:
-
   studio:
     container_name: supabase-studio
     image: supabase/studio:2025.04.21-sha-173cc56
@@ -42,9 +41,9 @@ services:
     container_name: supabase-kong
     image: kong:2.8.1
     restart: unless-stopped
-    ports:
-      - ${KONG_HTTP_PORT}:8000/tcp
-      - ${KONG_HTTPS_PORT}:8443/tcp
+#    ports:
+#      - ${KONG_HTTP_PORT}:8000/tcp
+#      - ${KONG_HTTPS_PORT}:8443/tcp
     volumes:
       - ./volumes/api/kong.yml:/home/kong/temp.yml:ro,z
     depends_on:
@@ -61,7 +60,14 @@ services:
       SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
       DASHBOARD_USERNAME: ${DASHBOARD_USERNAME}
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD}
-    entrypoint: bash -c 'eval "echo \"$$(cat ~/temp.yml)\"" > ~/kong.yml && /docker-entrypoint.sh kong docker-start'
+    entrypoint:
+      - bash
+      - -c
+      - |
+        eval "echo \"$$(cat ~/temp.yml)\"" > ~/kong.yml && /docker-entrypoint.sh kong docker-start
+    networks:
+      - default
+      - revisit_net
 
   auth:
     container_name: supabase-auth
@@ -169,8 +175,8 @@ services:
     container_name: supabase-analytics
     image: supabase/logflare:1.22.1
     restart: unless-stopped
-    ports:
-      - 4000:4000
+#    ports:
+#      - 4000:4000
     healthcheck:
       test:
         [
@@ -255,9 +261,9 @@ services:
 
   minio:
     image: minio/minio
-    ports:
-      - '9000:9000'
-      - '9001:9001'
+#    ports:
+#      - '9000:9000'
+#      - '9001:9001'
     environment:
       MINIO_ROOT_USER: supa-storage
       MINIO_ROOT_PASSWORD: secret1234
@@ -281,6 +287,7 @@ services:
       /usr/bin/mc mb supa-minio/stub;
       exit 0;
       "
+
   storage:
     container_name: supabase-storage
     image: supabase/storage-api:v1.11.13
@@ -329,3 +336,7 @@ services:
 
 volumes:
   db-config:
+
+networks:
+  revisit_net:
+    external: true
