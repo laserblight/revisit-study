@@ -218,7 +218,135 @@ Expected:
 
 ---
 
-## 5) Operational commands
+## 5) Deploy to Railway (app only)
+
+Railway hosts the reVISit app container. Supabase must be running elsewhere (self-hosted or Supabase.com).
+
+### 5.1 Prerequisites
+
+- Railway account and project created at [railway.com](https://railway.com)
+- Supabase already running (self-hosted or managed) — note your API URL and anon key.
+- `railway.json` in the repo root (already committed) — configures Dockerfile build and healthcheck.
+
+### 5.2 Set environment variables in Railway
+
+In the Railway dashboard → your service → Variables, add:
+
+| Variable | Value |
+|---|---|
+| `VITE_STORAGE_ENGINE` | `supabase` |
+| `VITE_SUPABASE_URL` | `https://api.<your-domain>` (or Supabase.com project URL) |
+| `VITE_SUPABASE_ANON_KEY` | anon key from your Supabase deployment |
+
+> **Important:** These values are baked into the JavaScript bundle at build time. Set them *before* your first deploy, or redeploy after changing them.
+
+### 5.3 Deploy
+
+Trigger a deploy from the Railway dashboard (push to connected branch or click **Deploy**).
+
+Railway injects a dynamic `PORT` at runtime; the nginx container reads it via envsubst so no additional configuration is needed.
+
+### 5.4 Smoke test
+
+```bash
+curl -I https://<your-app>.up.railway.app/
+```
+
+Expected: `200`.
+
+---
+
+## 6) Deploy to Coolify (full self-hosted: app + Supabase)
+
+Coolify is a self-hosted PaaS that runs on any VPS and manages Docker Compose stacks with automatic Traefik routing and TLS. This is the recommended path for full self-hosted deployments.
+
+### 6.1 Prerequisites
+
+- VPS with Ubuntu LTS, **4 GB RAM minimum** (8 GB recommended for build headroom).
+- DNS control for your domain.
+- Coolify installed:
+
+```bash
+curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
+```
+
+  Wait 1–2 minutes, then open `http://<droplet-ip>:8000` to complete the Coolify setup wizard.
+
+### 6.2 DNS (do this first — propagation takes time)
+
+Create two A records pointing at your Coolify droplet's public IP:
+
+| Hostname | Record |
+|---|---|
+| `api.<your-domain>` | A → Coolify IP |
+| `study.<your-domain>` | A → Coolify IP |
+
+### 6.3 Deploy Supabase
+
+1. In Coolify: **New Resource → Docker Compose → Git repository**.
+2. Connect your repo, branch `main`.
+3. Set:
+   - **Compose file path**: `supabase/docker-compose.yml`
+   - **Override / merge file**: `supabase/docker-compose.coolify.yml`
+4. Paste all variables from `supabase/.env`, updating these three:
+
+```dotenv
+SITE_URL=https://study.<your-domain>
+API_EXTERNAL_URL=https://api.<your-domain>
+SUPABASE_PUBLIC_URL=https://api.<your-domain>
+```
+
+5. Assign the domain `api.<your-domain>` to the **kong** service (port `8000`).
+6. Deploy and wait for all containers to reach healthy status (~2–3 minutes).
+
+> **What the override file does**: `supabase/docker-compose.coolify.yml` removes the `revisit_net` external network requirement that the DigitalOcean setup needs. Coolify handles networking internally, so the cross-stack shared network is not required.
+
+### 6.4 Bootstrap reVISit schema
+
+After Supabase is healthy, open a terminal to the Coolify droplet and run:
+
+```bash
+cd <repo-directory>
+bash supabase/setup-revisit.sh
+```
+
+Or run the SQL manually in the Supabase Studio SQL editor using the contents of `supabase/volumes/db/revisit.sql`.
+
+Verify (expected output: `(1 row)` for each check):
+
+```bash
+docker compose -f supabase/docker-compose.yml --env-file supabase/.env \
+  exec -T db psql -U postgres -c "SELECT count(*) FROM public.revisit;"
+```
+
+### 6.5 Deploy reVISit app
+
+1. In Coolify: **New Resource → Dockerfile → Git repository**.
+2. Connect same repo, branch `main`, Base Directory `/`.
+3. Set build arguments:
+
+| Build arg | Value |
+|---|---|
+| `VITE_STORAGE_ENGINE` | `supabase` |
+| `VITE_SUPABASE_URL` | `https://api.<your-domain>` |
+| `VITE_SUPABASE_ANON_KEY` | `ANON_KEY` value from `supabase/.env` |
+
+4. Port: `80`.
+5. Assign domain `study.<your-domain>`.
+6. Deploy.
+
+### 6.6 Smoke test
+
+```bash
+curl -I https://study.<your-domain>/
+curl -i https://api.<your-domain>/auth/v1/health
+```
+
+Open `https://study.<your-domain>` in a browser and confirm no **STORAGE DISCONNECTED** badge.
+
+---
+
+## 7) Operational commands
 
 ### View status
 
@@ -248,7 +376,7 @@ docker compose -f supabase/docker-compose.yml --env-file supabase/.env down
 
 ---
 
-## 6) Troubleshooting
+## 8) Troubleshooting
 
 - Error: `network revisit_net declared as external, but could not be found`
   - Create the shared network explicitly, then retry compose:

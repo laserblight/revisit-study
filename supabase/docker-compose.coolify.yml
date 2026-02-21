@@ -1,0 +1,20 @@
+# Coolify compose override — removes the external revisit_net Docker network requirement.
+#
+# In the DigitalOcean setup Kong joins revisit_net so Caddy (in a separate
+# compose stack) can reach it via that shared network. In Coolify, Traefik
+# handles routing externally and the reVISit app container talks to Kong via
+# its public HTTPS URL, so the cross-stack shared network is not needed.
+#
+# Usage (Coolify "Docker Compose" resource):
+#   Compose file:          supabase/docker-compose.yml
+#   Override / merge file: supabase/docker-compose.coolify.yml
+
+services:
+  kong:
+    networks:
+      - default
+
+networks:
+  revisit_net:
+    external: false
+    name: revisit_net_coolify
