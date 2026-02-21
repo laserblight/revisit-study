@@ -27,7 +27,7 @@ fi
 
 # Extract only the variables we need without sourcing the whole file.
 # (sourcing fails on unquoted values with spaces, e.g. STUDIO_DEFAULT_ORGANIZATION=Default Organization)
-_get_env() { grep -E "^${1}=" "${ENV_FILE}" | head -1 | cut -d= -f2-; }
+_get_env() { grep -E "^${1}=" "${ENV_FILE}" | head -1 | cut -d= -f2- || true; }
 
 POSTGRES_USER="$(_get_env POSTGRES_USER)"
 POSTGRES_USER="${POSTGRES_USER:-postgres}"
