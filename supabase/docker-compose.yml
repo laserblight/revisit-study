@@ -187,6 +187,9 @@ services:
       timeout: 5s
       interval: 5s
       retries: 10
+      # Give Logflare (Elixir app) time to start and run db migrations
+      # before Docker starts counting healthcheck failures.
+      start_period: 120s
     depends_on:
       db:
         condition: service_healthy
@@ -242,6 +245,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+      # Allow time for all initdb.d SQL migrations to complete before
+      # downstream services (analytics) attempt to connect.
+      start_period: 60s
     environment:
       POSTGRES_HOST: /var/run/postgresql
       PGPORT: ${POSTGRES_PORT}
