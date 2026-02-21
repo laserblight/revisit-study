@@ -35,7 +35,13 @@ docker network inspect revisit_net >/dev/null 2>&1 || docker network create revi
 docker compose -f supabase/docker-compose.yml -f supabase/docker-compose.local.yml --env-file supabase/.env up -d
 ```
 
-3. In root `.env`, set:
+3. **Bootstrap reVISit schema (first time only — safe to re-run):**
+
+```bash
+bash supabase/setup-revisit.sh
+```
+
+4. In root `.env`, set:
 
 ```dotenv
 VITE_STORAGE_ENGINE="supabase"
@@ -173,7 +179,16 @@ docker network inspect revisit_net >/dev/null 2>&1 || docker network create revi
 docker compose -f supabase/docker-compose.yml --env-file supabase/.env up -d
 ```
 
-3. Start app + Caddy reverse proxy:
+3. **Bootstrap reVISit schema (first deploy only — safe to re-run):**
+
+   This creates the `revisit` table, RLS policies, storage bucket, and storage policies
+   that reVISit requires. No browser or Supabase dashboard required.
+
+```bash
+bash supabase/setup-revisit.sh
+```
+
+4. Start app + Caddy reverse proxy:
 
 ```bash
 VITE_SUPABASE_ANON_KEY="$(grep '^ANON_KEY=' supabase/.env | cut -d= -f2-)" docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod up -d --build
@@ -261,8 +276,15 @@ docker info --format '{{.Name}}'
   - Rebuild and restart the `study` app container so the latest nginx fallback config is included:
 
 ```bash
-docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod build study
+docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod build --no-cache study
 docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod up -d
+```
+
+  - Confirm the new image/container is active:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod ps
+docker logs --tail 50 $(docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod ps -q study)
 ```
 
   - Then retest:
@@ -328,4 +350,55 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod build study
+```
+
+- Study loads but shows `STORAGE DISCONNECTED` / `Failed to connect to the storage engine`:
+  - **First, ensure the reVISit schema has been bootstrapped** (table, RLS, storage bucket):
+
+```bash
+bash supabase/setup-revisit.sh
+```
+
+  - Verify API domain is reachable publicly:
+
+```bash
+curl -i https://api.<your-domain>/auth/v1/health
+curl -i https://api.<your-domain>/rest/v1/
+```
+
+  - Expected without API key: `401` (this confirms routing works).
+
+  - Verify `deploy/.env.prod` uses plain hostnames (no `https://`):
+
+```dotenv
+STUDY_DOMAIN=study.<your-domain>
+API_DOMAIN=api.<your-domain>
+```
+
+  - Confirm app bundle was built with the correct API domain:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod exec study sh -lc "grep -R 'api\\.' -n /usr/share/nginx/html/assets | head"
+```
+
+  - If it shows wrong domain (for example `api.example.com`), rebuild app with correct env:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod build --no-cache study
+docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod up -d
+```
+
+  - Verify app uses the same anon key as Supabase:
+
+```bash
+grep '^ANON_KEY=' supabase/.env
+echo "${#VITE_SUPABASE_ANON_KEY}"
+```
+
+  - Recommended deploy pattern to avoid mismatch:
+
+```bash
+export VITE_SUPABASE_ANON_KEY="$(grep '^ANON_KEY=' supabase/.env | cut -d= -f2-)"
+docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod build study
+docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod up -d
 ```
