@@ -1,0 +1,16 @@
+services:
+  - name: revisit
+    type: web
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    port: 80
+    healthCheckPath: /
+    envVars:
+      # Set VITE_STORAGE_ENGINE to "supabase" (or "firebase" / "localStorage")
+      - key: VITE_STORAGE_ENGINE
+        value: supabase
+      # Fill these in the Render dashboard — they are baked into the static bundle at build time
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false

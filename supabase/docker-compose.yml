@@ -223,6 +223,8 @@ services:
       - ./volumes/db/data:/var/lib/postgresql/data:Z
       # Changes required for internal supabase data such as _analytics
       - ./volumes/db/_supabase.sql:/docker-entrypoint-initdb.d/migrations/97-_supabase.sql:Z
+      # reVISit schema: table, RLS policies, storage bucket (runs on fresh PGDATA only)
+      - ./volumes/db/revisit.sql:/docker-entrypoint-initdb.d/migrations/98-revisit.sql:Z
       # Changes required for Analytics support
       - ./volumes/db/logs.sql:/docker-entrypoint-initdb.d/migrations/99-logs.sql:Z
       # Use named volume to persist pgsodium decryption key between restarts

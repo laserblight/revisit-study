@@ -17,5 +17,6 @@ RUN export VITE_BASE_PATH="$VITE_BASE_PATH" \
 
 # ---- serve static ----
 FROM nginx:alpine
+EXPOSE 80
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY ./deploy/nginx.conf /etc/nginx/conf.d/default.conf

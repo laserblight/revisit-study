@@ -1,0 +1,18 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile",
+    "buildArgs": {
+      "VITE_STORAGE_ENGINE": "${{VITE_STORAGE_ENGINE}}",
+      "VITE_SUPABASE_URL": "${{VITE_SUPABASE_URL}}",
+      "VITE_SUPABASE_ANON_KEY": "${{VITE_SUPABASE_ANON_KEY}}"
+    }
+  },
+  "deploy": {
+    "healthcheckPath": "/",
+    "healthcheckTimeout": 300,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 3
+  }
+}
