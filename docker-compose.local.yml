@@ -8,6 +8,8 @@ services:
         VITE_SUPABASE_URL: "http://api.localhost:8080"
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-__UNSET__}
     restart: unless-stopped
+    environment:
+      PORT: "80"
     networks:
       - revisit_net
 
