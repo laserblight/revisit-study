@@ -341,4 +341,4 @@ volumes:
 
 networks:
   revisit_net:
-    external: true
+    name: revisit_net

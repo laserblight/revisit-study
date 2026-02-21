@@ -23,25 +23,19 @@ Command copy note:
 
 Use this for faster frontend iteration.
 
-1. Create shared Docker network (once):
-
-```bash
-docker network inspect revisit_net >/dev/null 2>&1 || docker network create revisit_net
-```
-
-2. Start Supabase with local-exposed ports:
+1. Start Supabase with local-exposed ports:
 
 ```bash
 docker compose -f supabase/docker-compose.yml -f supabase/docker-compose.local.yml --env-file supabase/.env up -d
 ```
 
-3. **Bootstrap reVISit schema (first time only — safe to re-run):**
+2. **Bootstrap reVISit schema (first time only — safe to re-run):**
 
 ```bash
 bash supabase/setup-revisit.sh
 ```
 
-4. In root `.env`, set:
+3. In root `.env`, set:
 
 ```dotenv
 VITE_STORAGE_ENGINE="supabase"
@@ -63,25 +57,19 @@ yarn serve
 
 Use this for production parity.
 
-1. Create shared network (once):
-
-```bash
-docker network inspect revisit_net >/dev/null 2>&1 || docker network create revisit_net
-```
-
-2. Start Supabase stack:
+1. Start Supabase stack:
 
 ```bash
 docker compose -f supabase/docker-compose.yml --env-file supabase/.env up -d
 ```
 
-3. Start app + local Caddy proxy:
+2. Start app + local Caddy proxy:
 
 ```bash
 VITE_SUPABASE_ANON_KEY="$(grep '^ANON_KEY=' supabase/.env | cut -d= -f2-)" docker compose -f docker-compose.local.yml --env-file deploy/.env.local.example up -d --build
 ```
 
-4. Open:
+3. Open:
 - App: http://localhost:8080
 - API host (through proxy): http://api.localhost:8080
 
@@ -167,19 +155,13 @@ SUPABASE_PUBLIC_URL=https://api.<your-domain>
 
 ## 4.3 Start services
 
-1. Create shared network:
-
-```bash
-docker network inspect revisit_net >/dev/null 2>&1 || docker network create revisit_net
-```
-
-2. Start Supabase:
+1. Start Supabase:
 
 ```bash
 docker compose -f supabase/docker-compose.yml --env-file supabase/.env up -d
 ```
 
-3. **Bootstrap reVISit schema (first deploy only — safe to re-run):**
+2. **Bootstrap reVISit schema (first deploy only — safe to re-run):**
 
    This creates the `revisit` table, RLS policies, storage bucket, and storage policies
    that reVISit requires. No browser or Supabase dashboard required.
@@ -188,7 +170,7 @@ docker compose -f supabase/docker-compose.yml --env-file supabase/.env up -d
 bash supabase/setup-revisit.sh
 ```
 
-4. Start app + Caddy reverse proxy:
+3. Start app + Caddy reverse proxy:
 
 ```bash
 VITE_SUPABASE_ANON_KEY="$(grep '^ANON_KEY=' supabase/.env | cut -d= -f2-)" docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod up -d --build
@@ -285,9 +267,7 @@ Create two A records pointing at your Coolify droplet's public IP:
 
 1. In Coolify: **New Resource → Docker Compose → Git repository**.
 2. Connect your repo, branch `main`.
-3. Set:
-   - **Compose file path**: `supabase/docker-compose.yml`
-   - **Override / merge file**: `supabase/docker-compose.coolify.yml`
+3. Set **Compose file path**: `supabase/docker-compose.yml`.
 4. Paste all variables from `supabase/.env`, updating these three:
 
 ```dotenv
@@ -298,8 +278,6 @@ SUPABASE_PUBLIC_URL=https://api.<your-domain>
 
 5. Assign the domain `api.<your-domain>` to the **kong** service (port `8000`).
 6. Deploy and wait for all containers to reach healthy status (~2–3 minutes).
-
-> **What the override file does**: `supabase/docker-compose.coolify.yml` removes the `revisit_net` external network requirement that the DigitalOcean setup needs. Coolify handles networking internally, so the cross-stack shared network is not required.
 
 ### 6.4 Bootstrap reVISit schema
 
@@ -379,19 +357,14 @@ docker compose -f supabase/docker-compose.yml --env-file supabase/.env down
 ## 8) Troubleshooting
 
 - Error: `network revisit_net declared as external, but could not be found`
-  - Create the shared network explicitly, then retry compose:
+  - This means the app/proxy stack (`docker-compose.prod.yml` or `docker-compose.local.yml`) was started before the Supabase stack.
+  - Start Supabase first (it creates `revisit_net`), then start the app stack:
 
 ```bash
-docker network inspect revisit_net >/dev/null 2>&1 || docker network create --driver bridge revisit_net
-docker network ls | grep revisit_net
 docker compose -f supabase/docker-compose.yml --env-file supabase/.env up -d
-```
-
-  - If it still fails, ensure you are using the same Docker daemon/context for both commands:
-
-```bash
-docker context show
-docker info --format '{{.Name}}'
+# wait until containers are healthy, then:
+VITE_SUPABASE_ANON_KEY="$(grep '^ANON_KEY=' supabase/.env | cut -d= -f2-)" \
+  docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod up -d --build
 ```
 
 - `api.localhost` not resolving locally:
