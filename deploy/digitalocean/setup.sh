@@ -77,22 +77,29 @@ info "Starting Supabase stack..."
 docker compose -f supabase/docker-compose.yml --env-file "${ENV_FILE}" up -d
 ok "Supabase containers started"
 
-# ---- wait for storage service -----------------------------------------------
-# setup-revisit.sh creates a row in storage.buckets, which only exists after the
-# storage container has run its own migrations. Waiting for raw Postgres readiness
-# (which setup-revisit.sh already does) is not enough — we must also wait for the
-# storage API container itself to reach a healthy state.
-info "Waiting for supabase-storage to be healthy (up to 3 min)..."
-for i in $(seq 1 36); do
-  STATUS="$(docker inspect --format='{{.State.Health.Status}}' supabase-storage 2>/dev/null || echo 'missing')"
-  if [[ "${STATUS}" == "healthy" ]]; then
-    ok "supabase-storage is healthy"
+# ---- wait for storage migrations --------------------------------------------
+# We need storage.buckets to exist before setup-revisit.sh can insert into it.
+# The Docker healthcheck on supabase-storage is unreliable on small VMs (1-2 GB),
+# so we poll Postgres directly for the storage schema instead.
+info "Waiting for Supabase storage migrations to complete (up to 5 min)..."
+
+POSTGRES_USER="$(grep -E '^POSTGRES_USER=' "${ENV_FILE}" | cut -d= -f2- || echo 'postgres')"
+POSTGRES_USER="${POSTGRES_USER:-postgres}"
+POSTGRES_DB="$(grep -E '^POSTGRES_DB=' "${ENV_FILE}" | cut -d= -f2- || echo 'postgres')"
+POSTGRES_DB="${POSTGRES_DB:-postgres}"
+
+for i in $(seq 1 60); do
+  BUCKET_TABLE="$(docker compose -f supabase/docker-compose.yml --env-file "${ENV_FILE}" \
+    exec -T db psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -tAc \
+    "SELECT to_regclass('storage.buckets');" 2>/dev/null || echo '')"
+  if [[ "${BUCKET_TABLE}" == "storage.buckets" ]]; then
+    ok "storage schema ready (storage.buckets exists)"
     break
   fi
-  if [[ "${i}" -eq 36 ]]; then
-    die "supabase-storage did not become healthy after 3 minutes. Check: docker logs supabase-storage"
+  if [[ "${i}" -eq 60 ]]; then
+    die "storage schema did not appear after 5 minutes. Check: docker logs supabase-storage"
   fi
-  echo "    waiting... (${STATUS}) [${i}/36]"
+  echo "    waiting for storage migrations... [${i}/60]"
   sleep 5
 done
 
