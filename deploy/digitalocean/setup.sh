@@ -77,6 +77,25 @@ info "Starting Supabase stack..."
 docker compose -f supabase/docker-compose.yml --env-file "${ENV_FILE}" up -d
 ok "Supabase containers started"
 
+# ---- wait for storage service -----------------------------------------------
+# setup-revisit.sh creates a row in storage.buckets, which only exists after the
+# storage container has run its own migrations. Waiting for raw Postgres readiness
+# (which setup-revisit.sh already does) is not enough — we must also wait for the
+# storage API container itself to reach a healthy state.
+info "Waiting for supabase-storage to be healthy (up to 3 min)..."
+for i in $(seq 1 36); do
+  STATUS="$(docker inspect --format='{{.State.Health.Status}}' supabase-storage 2>/dev/null || echo 'missing')"
+  if [[ "${STATUS}" == "healthy" ]]; then
+    ok "supabase-storage is healthy"
+    break
+  fi
+  if [[ "${i}" -eq 36 ]]; then
+    die "supabase-storage did not become healthy after 3 minutes. Check: docker logs supabase-storage"
+  fi
+  echo "    waiting... (${STATUS}) [${i}/36]"
+  sleep 5
+done
+
 # ---- bootstrap reVISit schema -----------------------------------------------
 info "Bootstrapping reVISit schema (table, RLS, storage bucket)..."
 bash supabase/setup-revisit.sh
