@@ -10,9 +10,11 @@ This is the recommended self-hosted path. For a managed PaaS alternative see [`d
 
 | File | Purpose |
 |---|---|
-| `docker-compose.yml` | App (`study`) + Caddy reverse proxy. Run with `--project-directory .` from the repo root. |
-| `../Caddyfile` | Caddy config consumed by `docker-compose.yml` (stays in `deploy/` — shared with local dev) |
-| `../.env.prod.example` | Template for `deploy/.env.prod` (domains) |
+| `setup.sh` | One-command bootstrap — run this after editing `supabase/.env` |
+| `docker-compose.yml` | App (`study`) + Caddy reverse proxy (used by `setup.sh` and operational commands) |
+| `../Caddyfile` | Caddy config (stays in `deploy/` — shared with local dev) |
+
+**Single config file:** `supabase/.env` (at the repo root) is the only file you edit. It contains both the Supabase secrets and the domain names for the reverse proxy.
 
 The `Dockerfile` at the **repo root** is used for the app build. Do not move it.
 
@@ -20,115 +22,95 @@ The `Dockerfile` at the **repo root** is used for the app build. Do not move it.
 
 ## Prerequisites
 
-- Ubuntu LTS Droplet, **4 GB RAM minimum** (8 GB recommended; see swap note in Troubleshooting)
-- Docker + Compose plugin installed (`docker compose` command works)
+- Ubuntu LTS Droplet, **2 GB RAM minimum** (4 GB recommended; see swap note in Troubleshooting)
+- Docker + Compose plugin installed: `curl -fsSL https://get.docker.com | sh`
 - DNS control for your domain
 
 ---
 
-## Step 1 — Create Droplet and point DNS
+## Step 1 — Point DNS
 
-1. Create an Ubuntu LTS Droplet.
-2. Create two A records pointing at the Droplet's public IP:
+Do this first — certificate issuance requires DNS to be live before Caddy starts.
+
+Create two A records pointing at the Droplet's public IP:
 
 | Hostname | Record |
 |---|---|
 | `study.<your-domain>` | A → Droplet IP |
 | `api.<your-domain>` | A → Droplet IP |
 
-3. SSH to the server and install Docker:
+Verify propagation from your laptop before proceeding:
 
 ```bash
-ssh <user>@<droplet-ip>
-curl -fsSL https://get.docker.com | sh
+dig +short study.<your-domain>
+dig +short api.<your-domain>
 ```
+
+Both should return the Droplet IP.
 
 ---
 
-## Step 2 — Clone repo and configure env
+## Step 2 — Edit `supabase/.env`
+
+Clone the repo on the server and open the **REQUIRED block** at the top of `supabase/.env`:
 
 ```bash
 git clone <your-repo-url>
 cd <repo-directory>
+nano supabase/.env
 ```
 
-**Configure domains:**
-
-```bash
-cp deploy/.env.prod.example deploy/.env.prod
-```
-
-Edit `deploy/.env.prod`:
+Set these 7 values — everything else is handled automatically:
 
 ```dotenv
+# Domains
 STUDY_DOMAIN=study.<your-domain>
 API_DOMAIN=api.<your-domain>
+
+# Secrets (rotate all of these)
+POSTGRES_PASSWORD=<strong-password>
+DASHBOARD_PASSWORD=<strong-password>
+JWT_SECRET=<32+-char-random-string>
+ANON_KEY=<jwt-derived-from-JWT_SECRET>
+SERVICE_ROLE_KEY=<jwt-derived-from-JWT_SECRET>
 ```
 
-**Configure Supabase secrets** in `supabase/.env`:
+> **JWT keys:** `ANON_KEY` and `SERVICE_ROLE_KEY` must match `JWT_SECRET`. Use the [Supabase JWT generator](https://supabase.com/docs/guides/self-hosting#generate-api-keys) to derive them. For a quick test deployment the committed defaults work as a matched set — just change the domain names and passwords.
 
-- Rotate all defaults (`POSTGRES_PASSWORD`, `JWT_SECRET`, `ANON_KEY`, `SERVICE_ROLE_KEY`, `DASHBOARD_PASSWORD`).
-- Set the three URL fields to match your domain:
-
-```dotenv
-SITE_URL=https://study.<your-domain>
-API_EXTERNAL_URL=https://api.<your-domain>
-SUPABASE_PUBLIC_URL=https://api.<your-domain>
-```
+The `SITE_URL`, `API_EXTERNAL_URL`, and `SUPABASE_PUBLIC_URL` fields are set automatically by `setup.sh` from your domain values. You do not need to edit them.
 
 ---
 
-## Step 3 — Start services
-
-**Start Supabase** (creates the `revisit_net` Docker network used by the app stack):
+## Step 3 — Run the setup script
 
 ```bash
-docker compose -f supabase/docker-compose.yml --env-file supabase/.env up -d
+bash deploy/digitalocean/setup.sh
 ```
 
-**Bootstrap reVISit schema** (first deploy only — safe to re-run):
+The script:
+1. Validates your config (fails fast if defaults are still present)
+2. Writes the derived URL fields into `supabase/.env`
+3. Starts the Supabase stack
+4. Bootstraps the reVISit schema (table, RLS, storage bucket)
+5. Builds and starts the app + Caddy reverse proxy
+6. Enables UFW (ports 22, 80, 443)
 
-```bash
-bash supabase/setup-revisit.sh
-```
-
-This creates the `revisit` table, RLS policies, storage bucket, and storage policies. No browser or Supabase Studio required.
-
-**Start app + Caddy reverse proxy:**
-
-```bash
-VITE_SUPABASE_ANON_KEY="$(grep '^ANON_KEY=' supabase/.env | cut -d= -f2-)" \
-  docker compose -f deploy/digitalocean/docker-compose.yml --project-directory . \
-  --env-file deploy/.env.prod up -d --build
-```
-
-> `--project-directory .` is required because the compose file lives in a subdirectory. It keeps all relative paths (build context, Caddyfile volume) anchored to the repo root.
+The **first build takes 10–30 min** on a 2 GB Droplet (TypeScript compile). Subsequent builds use Docker layer cache and are much faster.
 
 ---
 
-## Step 4 — Configure firewall
-
-Allow inbound:
-- `22` (SSH) — from your admin IP only
-- `80`, `443` — from the internet
-
-Keep all other ports (Postgres, Kong direct, Studio) closed externally.
-
----
-
-## Step 5 — Smoke test
+## Step 4 — Smoke test
 
 From your laptop:
 
 ```bash
-curl -I https://study.<your-domain>/
-curl -i https://api.<your-domain>/auth/v1/health
-curl -i https://api.<your-domain>/rest/v1/
+curl -I  https://study.<your-domain>/
+curl -si https://api.<your-domain>/auth/v1/health
 ```
 
 Expected:
-- Study: `200` (Caddy may issue a `301` redirect to HTTPS first)
-- API without key: `401 No API key found in request` (correct — confirms routing)
+- Study: `200` (Caddy may issue a `301` redirect to HTTPS on first request)
+- API: `200` with a JSON health response
 
 ---
 
@@ -147,7 +129,7 @@ docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 ```bash
 # App and proxy
 docker compose -f deploy/digitalocean/docker-compose.yml --project-directory . \
-  --env-file deploy/.env.prod logs -f caddy study
+  --env-file supabase/.env logs -f caddy study
 
 # Supabase services
 docker compose -f supabase/docker-compose.yml --env-file supabase/.env \
@@ -159,14 +141,14 @@ docker compose -f supabase/docker-compose.yml --env-file supabase/.env \
 ```bash
 VITE_SUPABASE_ANON_KEY="$(grep '^ANON_KEY=' supabase/.env | cut -d= -f2-)" \
   docker compose -f deploy/digitalocean/docker-compose.yml --project-directory . \
-  --env-file deploy/.env.prod up -d --build
+  --env-file supabase/.env up -d --build
 ```
 
 ### Stop all stacks
 
 ```bash
 docker compose -f deploy/digitalocean/docker-compose.yml --project-directory . \
-  --env-file deploy/.env.prod down
+  --env-file supabase/.env down
 docker compose -f supabase/docker-compose.yml --env-file supabase/.env down
 ```
 
@@ -183,7 +165,7 @@ docker compose -f supabase/docker-compose.yml --env-file supabase/.env up -d
 # wait ~30 s for containers to start, then:
 VITE_SUPABASE_ANON_KEY="$(grep '^ANON_KEY=' supabase/.env | cut -d= -f2-)" \
   docker compose -f deploy/digitalocean/docker-compose.yml --project-directory . \
-  --env-file deploy/.env.prod up -d --build
+  --env-file supabase/.env up -d --build
 ```
 
 **Caddy certificate not issued (HTTPS not working)**
@@ -197,27 +179,19 @@ Rebuild the `study` container to pick up the latest nginx fallback config:
 
 ```bash
 docker compose -f deploy/digitalocean/docker-compose.yml --project-directory . \
-  --env-file deploy/.env.prod build --no-cache study
+  --env-file supabase/.env build --no-cache study
 docker compose -f deploy/digitalocean/docker-compose.yml --project-directory . \
-  --env-file deploy/.env.prod up -d
+  --env-file supabase/.env up -d
 ```
 
 **App shows `STORAGE DISCONNECTED`**
 
 1. Ensure schema was bootstrapped: `bash supabase/setup-revisit.sh`
 2. Confirm the API is reachable: `curl -i https://api.<your-domain>/auth/v1/health`
-3. Confirm `deploy/.env.prod` uses plain hostnames (no `https://`):
-   ```dotenv
-   STUDY_DOMAIN=study.<your-domain>
-   API_DOMAIN=api.<your-domain>
-   ```
-4. Confirm the app was built with the correct env — recommended pattern:
+3. Confirm `STUDY_DOMAIN` and `API_DOMAIN` in `supabase/.env` are plain hostnames (no `https://`)
+4. Re-run `setup.sh` — it will re-derive the URL fields and rebuild the app:
    ```bash
-   export VITE_SUPABASE_ANON_KEY="$(grep '^ANON_KEY=' supabase/.env | cut -d= -f2-)"
-   docker compose -f deploy/digitalocean/docker-compose.yml --project-directory . \
-     --env-file deploy/.env.prod build study
-   docker compose -f deploy/digitalocean/docker-compose.yml --project-directory . \
-     --env-file deploy/.env.prod up -d
+   bash deploy/digitalocean/setup.sh
    ```
 
 **Build fails with `ESOCKETTIMEDOUT`**
@@ -243,11 +217,10 @@ sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```
 
-Then retry without `--no-cache`:
+Then retry:
 
 ```bash
-docker compose -f deploy/digitalocean/docker-compose.yml --project-directory . \
-  --env-file deploy/.env.prod build study
+bash deploy/digitalocean/setup.sh
 ```
 
 **Supabase service unhealthy**

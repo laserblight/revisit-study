@@ -7,6 +7,7 @@ deploy/
   README.md                        ← this file: local dev + directory guide
   digitalocean/                    ← DigitalOcean Droplet (or any plain Linux VPS)
     README.md
+    setup.sh                       ← one-command bootstrap (run this)
     docker-compose.yml
   railway/                         ← Railway (app-only, external Supabase)
     README.md
@@ -18,7 +19,6 @@ deploy/
     README.md
   Caddyfile                        ← Caddy config for production (DigitalOcean)
   Caddyfile.local                  ← Caddy config for local full-Docker (Option B)
-  .env.prod.example                ← Domain env template for DigitalOcean
   .env.local.example               ← Domain env template for local full-Docker
   nginx.conf                       ← nginx template baked into the Docker image (all targets)
 ```
