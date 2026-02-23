@@ -22,7 +22,7 @@ The `Dockerfile` at the **repo root** is used for the app build. Do not move it.
 
 ## Prerequisites
 
-- Ubuntu LTS Droplet, **2 GB RAM minimum** (4 GB recommended; see swap note in Troubleshooting)
+- Ubuntu LTS Droplet, **4 GB RAM minimum** (8 GB recommended; see swap note in Troubleshooting)
 - Docker + Compose plugin installed: `curl -fsSL https://get.docker.com | sh`
 - DNS control for your domain
 
@@ -95,7 +95,7 @@ The script:
 5. Builds and starts the app + Caddy reverse proxy
 6. Enables UFW (ports 22, 80, 443)
 
-The **first build takes 10–30 min** on a 2 GB Droplet (TypeScript compile). Subsequent builds use Docker layer cache and are much faster.
+The **first build takes 10–30 min** on a 4 GB Droplet (TypeScript compile). Subsequent builds use Docker layer cache and are much faster.
 
 ---
 
@@ -200,7 +200,7 @@ Transient. Retry — the `Dockerfile` already includes a yarn retry loop and 600
 
 **Build hangs at `tsc && vite build` for many minutes**
 
-This step can take 10–30 minutes on a 2 GB Droplet. Check memory:
+This step can take 10–30 minutes on a 4 GB Droplet. Check memory:
 
 ```bash
 docker stats --no-stream

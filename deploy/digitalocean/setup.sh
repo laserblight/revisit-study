@@ -79,7 +79,7 @@ ok "Supabase containers started"
 
 # ---- wait for storage migrations --------------------------------------------
 # We need storage.buckets to exist before setup-revisit.sh can insert into it.
-# The Docker healthcheck on supabase-storage is unreliable on small VMs (1-2 GB),
+# The Docker healthcheck on supabase-storage is unreliable on memory-constrained VMs,
 # so we poll Postgres directly for the storage schema instead.
 info "Waiting for Supabase storage migrations to complete (up to 5 min)..."
 
