@@ -104,9 +104,23 @@ for i in $(seq 1 60); do
 done
 
 # ---- bootstrap reVISit schema -----------------------------------------------
+# Retry up to 3 times — the psql heredoc may fail silently on first attempt
+# if the storage service's internal state isn't fully consistent yet.
 info "Bootstrapping reVISit schema (table, RLS, storage bucket)..."
-bash supabase/setup-revisit.sh
-ok "Schema ready"
+for attempt in 1 2 3; do
+  bash supabase/setup-revisit.sh && break
+  echo "    setup-revisit.sh attempt ${attempt} failed, retrying in 10s..."
+  sleep 10
+done
+
+# Verify the bucket row was actually inserted
+BUCKET_ROW="$(docker compose -f supabase/docker-compose.yml --env-file "${ENV_FILE}" \
+  exec -T db psql -U postgres -d postgres -tAc \
+  "SELECT id FROM storage.buckets WHERE id = 'revisit';" 2>/dev/null || echo '')"
+if [[ "${BUCKET_ROW}" != "revisit" ]]; then
+  die "storage bucket 'revisit' was not created. Check: docker logs supabase-db"
+fi
+ok "Schema ready (bucket confirmed in Postgres)"
 
 # ---- build and start app + Caddy --------------------------------------------
 info "Building and starting reVISit app + Caddy..."

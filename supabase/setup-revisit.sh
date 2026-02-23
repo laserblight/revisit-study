@@ -58,7 +58,7 @@ done
 echo "==> Applying reVISit schema, policies, and storage bucket..."
 
 docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" \
-  exec -T db psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" <<'SQL'
+  exec -T db psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -v ON_ERROR_STOP=1 <<'SQL'
 
 -- ── 1. revisit table ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.revisit (
@@ -120,7 +120,7 @@ echo "==> Done. Verifying..."
 
 # ── Quick verification ───────────────────────────────────────────────────────────
 docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" \
-  exec -T db psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" <<'SQL'
+  exec -T db psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -v ON_ERROR_STOP=1 <<'SQL'
 
 \echo '\n── Table:'
 SELECT table_schema, table_name
