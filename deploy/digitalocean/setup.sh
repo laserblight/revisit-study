@@ -90,7 +90,7 @@ POSTGRES_DB="${POSTGRES_DB:-postgres}"
 
 for i in $(seq 1 60); do
   BUCKET_TABLE="$(docker compose -f supabase/docker-compose.yml --env-file "${ENV_FILE}" \
-    exec -T db psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -tAc \
+    exec -T db psql -U supabase_admin -d "${POSTGRES_DB}" -tAc \
     "SELECT to_regclass('storage.buckets');" 2>/dev/null || echo '')"
   if [[ "${BUCKET_TABLE}" == "storage.buckets" ]]; then
     ok "storage schema ready (storage.buckets exists)"
@@ -115,7 +115,7 @@ done
 
 # Verify the bucket row was actually inserted
 BUCKET_ROW="$(docker compose -f supabase/docker-compose.yml --env-file "${ENV_FILE}" \
-  exec -T db psql -U postgres -d postgres -tAc \
+  exec -T db psql -U supabase_admin -d "${POSTGRES_DB}" -tAc \
   "SELECT id FROM storage.buckets WHERE id = 'revisit';" 2>/dev/null || echo '')"
 if [[ "${BUCKET_ROW}" != "revisit" ]]; then
   die "storage bucket 'revisit' was not created. Check: docker logs supabase-db"

@@ -33,8 +33,11 @@ POSTGRES_USER="$(_get_env POSTGRES_USER)"
 POSTGRES_USER="${POSTGRES_USER:-postgres}"
 POSTGRES_DB="$(_get_env POSTGRES_DB)"
 POSTGRES_DB="${POSTGRES_DB:-postgres}"
+# supabase_admin is the privileged superuser in Supabase Docker — it owns the
+# storage schema and can ALTER any table. Use it for all DDL so ownership checks pass.
+SQL_USER="supabase_admin"
 
-echo "==> Using POSTGRES_DB=${POSTGRES_DB}, POSTGRES_USER=${POSTGRES_USER}"
+echo "==> Using POSTGRES_DB=${POSTGRES_DB}, POSTGRES_USER=${POSTGRES_USER}, SQL_USER=${SQL_USER}"
 
 # ── Wait for Postgres to accept connections ──────────────────────────────────────
 echo "==> Waiting for Postgres to be ready..."
@@ -58,7 +61,7 @@ done
 echo "==> Applying reVISit schema, policies, and storage bucket..."
 
 docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" \
-  exec -T db psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -v ON_ERROR_STOP=1 <<'SQL'
+  exec -T db psql -U "${SQL_USER}" -d "${POSTGRES_DB}" -v ON_ERROR_STOP=1 <<'SQL'
 
 -- ── 1. revisit table ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.revisit (
@@ -68,6 +71,8 @@ CREATE TABLE IF NOT EXISTS public.revisit (
   "data"      JSONB,
   PRIMARY KEY ("studyId", "docId")
 );
+-- Ensure ownership is correct even if a previous partial run created it as a different role.
+ALTER TABLE public.revisit OWNER TO supabase_admin;
 
 -- ── 2. Enable Row Level Security ────────────────────────────────────────────────
 ALTER TABLE public.revisit ENABLE ROW LEVEL SECURITY;
@@ -120,7 +125,7 @@ echo "==> Done. Verifying..."
 
 # ── Quick verification ───────────────────────────────────────────────────────────
 docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" \
-  exec -T db psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -v ON_ERROR_STOP=1 <<'SQL'
+  exec -T db psql -U "${SQL_USER}" -d "${POSTGRES_DB}" -v ON_ERROR_STOP=1 <<'SQL'
 
 \echo '\n── Table:'
 SELECT table_schema, table_name
