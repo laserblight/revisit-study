@@ -1,3 +1,11 @@
+# ReVISit — Render service definition
+# Full deployment guide: deploy/render/README.md
+#
+# This file is a reference template. Render Blueprint auto-detection requires
+# render.yaml to be at the repo root. To use Blueprint deployment, copy this
+# file to the repo root. For manual service creation from the Render dashboard,
+# this file is not needed at root — follow deploy/render/README.md instead.
+
 services:
   - name: revisit
     type: web

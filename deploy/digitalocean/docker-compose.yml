@@ -15,7 +15,7 @@ services:
     networks:
       - revisit_net
 
-  # --- Caddy reverse proxy ---
+  # --- Caddy reverse proxy (handles TLS automatically via ACME) ---
   caddy:
     image: caddy:2
     container_name: caddy
