@@ -136,13 +136,74 @@ docker compose -f supabase/docker-compose.yml --env-file supabase/.env \
   logs -f kong auth rest storage db
 ```
 
-### Rebuild and restart app only
+### Deploy study changes (add/edit studies in `public/`)
+
+After pushing changes to `public/` (study configs, assets, etc.), SSH into the server and rebuild only the `study` container. Supabase and Caddy keep running with no downtime to the API.
+
+```bash
+git pull
+VITE_SUPABASE_ANON_KEY="$(grep '^ANON_KEY=' supabase/.env | cut -d= -f2-)" \
+  docker compose -f deploy/digitalocean/docker-compose.yml --project-directory . \
+  --env-file supabase/.env up -d --build study
+```
+
+The first rebuild takes a few minutes; subsequent builds are faster due to Docker layer caching (`node_modules` is cached as long as `package.json` hasn't changed).
+
+### Rebuild and restart app only (full rebuild)
 
 ```bash
 VITE_SUPABASE_ANON_KEY="$(grep '^ANON_KEY=' supabase/.env | cut -d= -f2-)" \
   docker compose -f deploy/digitalocean/docker-compose.yml --project-directory . \
   --env-file supabase/.env up -d --build
 ```
+
+### Automated deploys via GitHub Actions
+
+You can trigger a server-side rebuild automatically on every push to `main` using a GitHub Actions workflow. The workflow SSHs into the server and runs the rebuild command above.
+
+**Setup (one time):**
+
+1. Generate a dedicated deploy key on the server:
+   ```bash
+   ssh-keygen -t ed25519 -f ~/.ssh/deploy_key -N ""
+   cat ~/.ssh/deploy_key.pub >> ~/.ssh/authorized_keys
+   ```
+2. Add the **private key** as a GitHub Actions secret:
+   - Repo → Settings → Secrets and variables → Actions
+   - `DEPLOY_SSH_KEY` = contents of `~/.ssh/deploy_key`
+3. Add two more secrets:
+   - `DEPLOY_HOST` = your server IP or hostname (e.g. `104.248.10.242`)
+   - `DEPLOY_ANON_KEY` = value of `ANON_KEY` from `supabase/.env`
+
+Then create `.github/workflows/deploy.yml` in the repo:
+
+```yaml
+name: Deploy to DigitalOcean
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH and rebuild study container
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: root
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd ~/supabasetest
+            git pull
+            VITE_SUPABASE_ANON_KEY="${{ secrets.DEPLOY_ANON_KEY }}" \
+              docker compose -f deploy/digitalocean/docker-compose.yml \
+              --project-directory . --env-file supabase/.env \
+              up -d --build study
+```
+
+> **Note:** `DEPLOY_ANON_KEY` is a public JWT, not a sensitive secret — it is already baked into the client-side app bundle. The real secrets (`JWT_SECRET`, `SERVICE_ROLE_KEY`, `POSTGRES_PASSWORD`) stay on the server only and are never needed by the workflow.
 
 ### Stop all stacks
 
