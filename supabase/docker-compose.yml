@@ -244,10 +244,11 @@ services:
         ]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
       # Allow time for all initdb.d SQL migrations to complete before
-      # downstream services (analytics) attempt to connect.
-      start_period: 60s
+      # downstream services attempt to connect. On a fresh volume this
+      # can take 3+ minutes on slow hardware; give it generous headroom.
+      start_period: 180s
     environment:
       POSTGRES_HOST: /var/run/postgresql
       PGPORT: ${POSTGRES_PORT}

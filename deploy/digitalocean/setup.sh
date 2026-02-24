@@ -74,21 +74,24 @@ ok "SUPABASE_PUBLIC_URL=https://${API_DOMAIN}"
 
 # ---- start Supabase ---------------------------------------------------------
 info "Starting Supabase stack..."
-docker compose -f supabase/docker-compose.yml --env-file "${ENV_FILE}" up -d
-ok "Supabase containers started"
+# `|| true` prevents set -e from aborting if a container's healthcheck hasn't
+# passed within Docker Compose's timeout. Our storage.buckets polling loop
+# below provides the actual readiness gate.
+docker compose -f supabase/docker-compose.yml --env-file "${ENV_FILE}" up -d || true
+ok "Supabase containers started (polling for readiness...)"
 
 # ---- wait for storage migrations --------------------------------------------
 # We need storage.buckets to exist before setup-revisit.sh can insert into it.
 # The Docker healthcheck on supabase-storage is unreliable on memory-constrained VMs,
 # so we poll Postgres directly for the storage schema instead.
-info "Waiting for Supabase storage migrations to complete (up to 5 min)..."
+info "Waiting for Supabase storage migrations to complete (up to 8 min)..."
 
 POSTGRES_USER="$(grep -E '^POSTGRES_USER=' "${ENV_FILE}" | cut -d= -f2- || echo 'postgres')"
 POSTGRES_USER="${POSTGRES_USER:-postgres}"
 POSTGRES_DB="$(grep -E '^POSTGRES_DB=' "${ENV_FILE}" | cut -d= -f2- || echo 'postgres')"
 POSTGRES_DB="${POSTGRES_DB:-postgres}"
 
-for i in $(seq 1 60); do
+for i in $(seq 1 96); do
   BUCKET_TABLE="$(docker compose -f supabase/docker-compose.yml --env-file "${ENV_FILE}" \
     exec -T db psql -U supabase_admin -d "${POSTGRES_DB}" -tAc \
     "SELECT to_regclass('storage.buckets');" 2>/dev/null || echo '')"
@@ -96,10 +99,10 @@ for i in $(seq 1 60); do
     ok "storage schema ready (storage.buckets exists)"
     break
   fi
-  if [[ "${i}" -eq 60 ]]; then
-    die "storage schema did not appear after 5 minutes. Check: docker logs supabase-storage"
+  if [[ "${i}" -eq 96 ]]; then
+    die "storage schema did not appear after 8 minutes. Check: docker logs supabase-db && docker logs supabase-storage"
   fi
-  echo "    waiting for storage migrations... [${i}/60]"
+  echo "    waiting for storage migrations... [${i}/96]"
   sleep 5
 done
 
