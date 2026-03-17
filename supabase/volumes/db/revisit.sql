@@ -34,8 +34,9 @@ BEGIN
 END $$;
 
 -- 4. Storage bucket
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('revisit', 'revisit', false)
+-- Newer Supabase storage schema no longer includes the `public` column.
+INSERT INTO storage.buckets (id, name)
+VALUES ('revisit', 'revisit')
 ON CONFLICT (id) DO NOTHING;
 
 -- 5. Storage object policy

@@ -95,9 +95,9 @@ BEGIN
   END IF;
 END $$;
 
--- ── 4. Storage bucket ───────────────────────────────────────────────────────────
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('revisit', 'revisit', false)
+-- Newer Supabase storage schema no longer includes the `public` column.
+INSERT INTO storage.buckets (id, name)
+VALUES ('revisit', 'revisit')
 ON CONFLICT (id) DO NOTHING;
 
 -- ── 5. Storage object policy (idempotent) ───────────────────────────────────────
@@ -138,7 +138,7 @@ SELECT policyname, cmd, roles
  WHERE schemaname = 'public' AND tablename = 'revisit';
 
 \echo '\n── Storage bucket:'
-SELECT id, name, public FROM storage.buckets WHERE id = 'revisit';
+SELECT id, name FROM storage.buckets WHERE id = 'revisit';
 
 \echo '\n── Storage policies (storage.objects):'
 SELECT policyname, cmd, roles
