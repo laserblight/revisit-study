@@ -1,0 +1,22 @@
+services:
+
+  # --- Study UI ---
+  study:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_BASE_PATH: "/"
+        VITE_SUPABASE_URL: "https://${STUDY_DOMAIN:-ws-jjlight.ncsu-las.net}"
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-__UNSET__}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:80"
+    environment:
+      PORT: "80"
+    networks:
+      - revisit_net
+
+networks:
+  revisit_net:
+    external: true
