@@ -34,6 +34,7 @@ NCSU workspace VMs sit behind an institutional reverse proxy (`proxy.ncsu-las.ne
 | `setup.sh` | One-command bootstrap — run this after editing `supabase/.env` |
 | `uninstall.sh` | Tears down containers, restores nginx, removes networks. Pass `--purge` to also delete data |
 | `docker-compose.yml` | App (`study`) container only — no Caddy |
+| `supabase-override.yml` | Compose override layered on `supabase/docker-compose.yml` to expose Kong on `127.0.0.1:8100` for the system nginx |
 | `nginx-revisit.conf` | nginx site config installed by `setup.sh` to route traffic to the containers |
 
 **Single config file:** `supabase/.env` (at the repo root) is the only file you edit. `API_DOMAIN` is ignored — the setup script derives all URLs from `STUDY_DOMAIN` alone.
@@ -133,8 +134,8 @@ docker compose -f deploy/ncsu/docker-compose.yml --project-directory . \
   --env-file supabase/.env logs -f study
 
 # Supabase services
-docker compose -f supabase/docker-compose.yml --env-file supabase/.env \
-  logs -f kong auth rest storage db
+docker compose -f supabase/docker-compose.yml -f deploy/ncsu/supabase-override.yml \
+  --env-file supabase/.env logs -f kong auth rest storage db
 ```
 
 ### Deploy study changes (add/edit studies in `public/`)
@@ -159,7 +160,8 @@ VITE_SUPABASE_ANON_KEY="$(grep '^ANON_KEY=' supabase/.env | cut -d= -f2-)" \
 ```bash
 docker compose -f deploy/ncsu/docker-compose.yml --project-directory . \
   --env-file supabase/.env down
-docker compose -f supabase/docker-compose.yml --env-file supabase/.env down
+docker compose -f supabase/docker-compose.yml -f deploy/ncsu/supabase-override.yml \
+  --env-file supabase/.env down
 ```
 
 ### Full uninstall

@@ -26,6 +26,10 @@ cd "${REPO_ROOT}"
 
 ENV_FILE="supabase/.env"
 
+# Layer the NCSU override on every Supabase compose call so Kong is exposed
+# on the host loopback for the system nginx to reach.
+SUPABASE_COMPOSE=(-f supabase/docker-compose.yml -f deploy/ncsu/supabase-override.yml)
+
 # ---- helpers ----------------------------------------------------------------
 die()  { echo ""; echo "ERROR: $*" >&2; echo ""; exit 1; }
 info() { echo ""; echo "==> $*"; }
@@ -99,7 +103,7 @@ info "Starting Supabase stack..."
 # `|| true` prevents set -e from aborting if a container's healthcheck hasn't
 # passed within Docker Compose's timeout. Our storage.buckets polling loop
 # below provides the actual readiness gate.
-docker compose -f supabase/docker-compose.yml --env-file "${ENV_FILE}" up -d || true
+docker compose "${SUPABASE_COMPOSE[@]}" --env-file "${ENV_FILE}" up -d || true
 ok "Supabase containers started (polling for readiness...)"
 
 # ---- wait for storage migrations --------------------------------------------
@@ -112,7 +116,7 @@ POSTGRES_DB="$(grep -E '^POSTGRES_DB=' "${ENV_FILE}" | cut -d= -f2- || echo 'pos
 POSTGRES_DB="${POSTGRES_DB:-postgres}"
 
 for i in $(seq 1 96); do
-  BUCKET_TABLE="$(docker compose -f supabase/docker-compose.yml --env-file "${ENV_FILE}" \
+  BUCKET_TABLE="$(docker compose "${SUPABASE_COMPOSE[@]}" --env-file "${ENV_FILE}" \
     exec -T db psql -U supabase_admin -d "${POSTGRES_DB}" -tAc \
     "SELECT to_regclass('storage.buckets');" 2>/dev/null || echo '')"
   if [[ "${BUCKET_TABLE}" == "storage.buckets" ]]; then
@@ -137,7 +141,7 @@ for attempt in 1 2 3; do
 done
 
 # Verify the bucket row was actually inserted
-BUCKET_ROW="$(docker compose -f supabase/docker-compose.yml --env-file "${ENV_FILE}" \
+BUCKET_ROW="$(docker compose "${SUPABASE_COMPOSE[@]}" --env-file "${ENV_FILE}" \
   exec -T db psql -U supabase_admin -d "${POSTGRES_DB}" -tAc \
   "SELECT id FROM storage.buckets WHERE id = 'revisit';" 2>/dev/null || echo '')"
 if [[ "${BUCKET_ROW}" != "revisit" ]]; then

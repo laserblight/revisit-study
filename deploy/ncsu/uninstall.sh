@@ -49,8 +49,8 @@ DOWN_ARGS=()
 if [[ "${PURGE}" == true ]]; then
   DOWN_ARGS+=("--volumes")
 fi
-if docker compose -f supabase/docker-compose.yml --env-file "${ENV_FILE}" \
-     down "${DOWN_ARGS[@]}" 2>/dev/null; then
+if docker compose -f supabase/docker-compose.yml -f deploy/ncsu/supabase-override.yml \
+     --env-file "${ENV_FILE}" down "${DOWN_ARGS[@]}" 2>/dev/null; then
   ok "Supabase stack stopped and removed"
 else
   warn "Supabase stack was not running (skipped)"
