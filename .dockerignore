@@ -23,3 +23,5 @@ coverage
 .env.*.local
 public/__revisit-widget
 src/public/__revisit-widget
+node_modules
+supabase/volumes

@@ -1,0 +1,16 @@
+# Compose override for NCSU deploys.
+#
+# Layered on top of supabase/docker-compose.yml to expose Kong on the host
+# loopback so the system nginx (which serves /auth/v1/*, /rest/v1/*, etc.) can
+# reverse-proxy to it.
+#
+# Usage (handled automatically by deploy/ncsu/setup.sh):
+#   docker compose \
+#     -f supabase/docker-compose.yml \
+#     -f deploy/ncsu/supabase-override.yml \
+#     --env-file supabase/.env up -d
+
+services:
+  kong:
+    ports:
+      - "127.0.0.1:${KONG_HTTP_PORT}:8000/tcp"
